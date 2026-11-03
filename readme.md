@@ -66,16 +66,25 @@ C:\Qt\6.5.3\msvc2019_64
            SQLite 数据库
 ```
 
-工程依赖关系：
+工程链接和构建依赖关系（不是目录树）：
 
-```text
-LabAssetUI
-├── module_database
-├── module_borrow       -> module_database
-├── module_equipment    -> module_database
-├── module_maintenance  -> module_database
-└── module_statistics   -> module_database
-```
+下表中的箭头 `使用方 -> 被依赖方` 表示使用方会链接对方的 `.lib`，
+运行时需要对方的 `.dll`。这里的名称是 Visual Studio 工程名，不是目录名。
+
+| 使用方工程 | 被依赖或被链接的工程 |
+| --- | --- |
+| `module_borrow` | `module_database` |
+| `module_equipment` | `module_database` |
+| `module_maintenance` | `module_database` |
+| `module_statistics` | `module_database` |
+| `LabAssetUI` | `module_database`、`module_borrow`、`module_equipment`、`module_maintenance`、`module_statistics` |
+
+因此：
+
+- 4 个业务 DLL 只依赖数据库 DLL，不互相信赖。
+- `LabAssetUI` 是最终消费方，链接全部 5 个 DLL。
+- 总解决方案会先构建 `module_database`，再构建 4 个业务 DLL，最后构建 `LabAssetUI`。
+- 业务源码并不放在 `LabAssetUI/` 里面，它位于各自的 `module_*/module_*/` 工程目录。
 
 ### 分层职责
 
