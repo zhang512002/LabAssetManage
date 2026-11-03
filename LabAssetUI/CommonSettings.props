@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)commonlibdll\module_database\include;$(SolutionDir)commonlibdll\module_borrow\include;$(SolutionDir)commonlibdll\module_equipment\include;$(SolutionDir)commonlibdll\module_maintenance\include;$(SolutionDir)commonlibdll\module_statistics\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(SolutionDir)commonlibdll\module_database\lib;$(SolutionDir)commonlibdll\module_borrow\lib;$(SolutionDir)commonlibdll\module_equipment\lib;$(SolutionDir)commonlibdll\module_maintenance\lib;$(SolutionDir)commonlibdll\module_statistics\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>module_database.lib;module_borrow.lib;module_equipment.lib;module_maintenance.lib;module_statistics.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>

@@ -1,0 +1,2 @@
+#define MODULEEQUIPMENT_API __declspec(dllexport)
+#define MODULEEQUIPMENT_API __declspec(dllimport)

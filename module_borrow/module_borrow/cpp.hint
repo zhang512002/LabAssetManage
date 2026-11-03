@@ -1,0 +1,2 @@
+#define MODULEBORROW_API __declspec(dllexport)
+#define MODULEBORROW_API __declspec(dllimport)

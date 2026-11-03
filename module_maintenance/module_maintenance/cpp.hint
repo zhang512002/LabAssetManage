@@ -1,0 +1,2 @@
+#define MODULEMAINTENANCE_API __declspec(dllexport)
+#define MODULEMAINTENANCE_API __declspec(dllimport)

@@ -1,0 +1,2 @@
+#define MODULEDATABASE_API __declspec(dllexport)
+#define MODULEDATABASE_API __declspec(dllimport)

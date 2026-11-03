@@ -1,0 +1,2 @@
+#define MODULESTATISTICS_API __declspec(dllexport)
+#define MODULESTATISTICS_API __declspec(dllimport)
