@@ -142,12 +142,16 @@
     </ClCompile>
   </ItemGroup>
   <Target Name="CopyLabAssetModuleDlls" AfterTargets="Build">
+    <PropertyGroup>
+      <UiModuleSuffix Condition="'$(Configuration)' == 'Debug'">d</UiModuleSuffix>
+      <UiModuleSuffix Condition="'$(Configuration)' == 'Release'"></UiModuleSuffix>
+    </PropertyGroup>
     <ItemGroup>
-      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_database\bin\module_database.dll" />
-      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_borrow\bin\module_borrow.dll" />
-      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_equipment\bin\module_equipment.dll" />
-      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_maintenance\bin\module_maintenance.dll" />
-      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_statistics\bin\module_statistics.dll" />
+      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_database\bin\module_database$(UiModuleSuffix).dll" />
+      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_borrow\bin\module_borrow$(UiModuleSuffix).dll" />
+      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_equipment\bin\module_equipment$(UiModuleSuffix).dll" />
+      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_maintenance\bin\module_maintenance$(UiModuleSuffix).dll" />
+      <LabAssetModuleDll Include="$(SolutionDir)commonlibdll\module_statistics\bin\module_statistics$(UiModuleSuffix).dll" />
     </ItemGroup>
     <Copy
       SourceFiles="@(LabAssetModuleDll)"

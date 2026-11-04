@@ -459,6 +459,21 @@ module_database
 
 UI 构建完成后，会自动把 5 个模块 DLL 复制到 UI 输出目录。
 
+### Debug/Release 产物命名
+
+Debug 产物追加 `d` 后缀，Release 保持无后缀：
+
+| Debug | Release |
+| --- | --- |
+| `module_databased.dll/.lib` | `module_database.dll/.lib` |
+| `module_borrowd.dll/.lib` | `module_borrow.dll/.lib` |
+| `module_equipmentd.dll/.lib` | `module_equipment.dll/.lib` |
+| `module_maintenanced.dll/.lib` | `module_maintenance.dll/.lib` |
+| `module_statisticsd.dll/.lib` | `module_statistics.dll/.lib` |
+
+因此 Debug 和 Release 产物可以同时保存在公共库中，不会互相覆盖。
+UI 会按照当前配置链接并复制对应名称的 DLL。
+
 ## 输出位置
 
 Debug UI：
