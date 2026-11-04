@@ -257,11 +257,20 @@ void EquipmentPage::deleteEquipment()
     const QString description =
         equipment->assetNo + QStringLiteral(" - ")
         + equipment->name;
+    const bool isScrapped =
+        equipment->status == LabAsset::EquipmentStatus::Scrapped;
+    const QString confirmationText = isScrapped
+        ? QStringLiteral(
+            "设备“%1”已报废。\n"
+            "永久删除时将同时清理它的借还和维保历史，"
+            "此操作无法撤销。\n\n确定继续吗？")
+            .arg(description)
+        : QStringLiteral("确定永久删除设备“%1”吗？")
+            .arg(description);
     const auto answer = QMessageBox::question(
         this,
         QStringLiteral("确认删除"),
-        QStringLiteral("确定永久删除设备“%1”吗？")
-            .arg(description),
+        confirmationText,
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
     if (answer != QMessageBox::Yes) {

@@ -731,6 +731,162 @@ bool MaintenanceManager::processComplete(
     return true;
 }
 
+bool MaintenanceManager::processRepairFailureAndScrap(
+    int recordId,
+    QString& errorText)
+{
+    errorText.clear();
+
+    if (recordId <= 0) {
+        errorText = QStringLiteral(
+            "维保记录 ID 无效，无法执行报废");
+        return false;
+    }
+
+    QSqlDatabase database;
+    if (!openDatabase(database, errorText)) {
+        return false;
+    }
+    if (!database.transaction()) {
+        errorText = QStringLiteral("无法开启报废事务：%1")
+            .arg(database.lastError().text());
+        return false;
+    }
+
+    QSqlQuery recordQuery(database);
+    if (!recordQuery.prepare(
+        "SELECT equipment_id, type, status "
+        "FROM maintenance_record WHERE id = :id")) {
+        errorText = QStringLiteral("准备读取维保记录失败：%1")
+            .arg(recordQuery.lastError().text());
+        database.rollback();
+        return false;
+    }
+    recordQuery.bindValue(":id", recordId);
+    if (!recordQuery.exec()) {
+        errorText = QStringLiteral("读取维保记录失败：%1")
+            .arg(recordQuery.lastError().text());
+        database.rollback();
+        return false;
+    }
+    if (!recordQuery.next()) {
+        errorText = QStringLiteral("未找到对应的维保记录");
+        database.rollback();
+        return false;
+    }
+
+    const int equipmentId =
+        recordQuery.value(QStringLiteral("equipment_id")).toInt();
+    const QString type =
+        recordQuery.value(QStringLiteral("type")).toString();
+    LabAsset::MaintenanceStatus status;
+    if (!parseStatus(
+        recordQuery.value(QStringLiteral("status")).toString(),
+        status)) {
+        errorText = QStringLiteral("维保任务状态无效");
+        database.rollback();
+        return false;
+    }
+    if (type != QStringLiteral("repair")) {
+        errorText = QStringLiteral(
+            "只有维修任务可以执行维修失败报废");
+        database.rollback();
+        return false;
+    }
+    if (status != LabAsset::MaintenanceStatus::InProgress) {
+        errorText = QStringLiteral(
+            "只有处理中的维修任务可以执行报废");
+        database.rollback();
+        return false;
+    }
+
+    QSqlQuery equipmentQuery(database);
+    if (!equipmentQuery.prepare(
+        "UPDATE equipment SET status = :new_status "
+        "WHERE id = :equipment_id "
+        "AND status = :expected_status")) {
+        errorText = QStringLiteral("准备更新设备报废状态失败：%1")
+            .arg(equipmentQuery.lastError().text());
+        database.rollback();
+        return false;
+    }
+    equipmentQuery.bindValue(
+        ":new_status",
+        LabAsset::statusToDb(
+            LabAsset::EquipmentStatus::Scrapped));
+    equipmentQuery.bindValue(":equipment_id", equipmentId);
+    equipmentQuery.bindValue(
+        ":expected_status",
+        LabAsset::statusToDb(
+            LabAsset::EquipmentStatus::Repairing));
+
+    if (!equipmentQuery.exec()) {
+        errorText = QStringLiteral("更新设备报废状态失败：%1")
+            .arg(equipmentQuery.lastError().text());
+        database.rollback();
+        return false;
+    }
+    if (equipmentQuery.numRowsAffected() != 1) {
+        errorText = QStringLiteral(
+            "设备当前不是维修中状态，无法报废");
+        database.rollback();
+        return false;
+    }
+
+    QSqlQuery updateTask(database);
+    if (!updateTask.prepare(
+        "UPDATE maintenance_record "
+        "SET status = :new_status, "
+        "    description = CASE "
+        "        WHEN description IS NULL "
+        "             OR TRIM(description) = '' "
+        "        THEN :failure_note "
+        "        ELSE description || :failure_suffix "
+        "    END "
+        "WHERE id = :id AND status = :expected_status")) {
+        errorText = QStringLiteral("准备结束维修任务失败：%1")
+            .arg(updateTask.lastError().text());
+        database.rollback();
+        return false;
+    }
+    updateTask.bindValue(
+        ":new_status",
+        LabAsset::maintenanceStatusToDb(
+            LabAsset::MaintenanceStatus::Completed));
+    updateTask.bindValue(
+        ":failure_note",
+        QStringLiteral("维修失败，设备报废"));
+    updateTask.bindValue(
+        ":failure_suffix",
+        QStringLiteral("；维修失败，设备报废"));
+    updateTask.bindValue(":id", recordId);
+    updateTask.bindValue(
+        ":expected_status",
+        LabAsset::maintenanceStatusToDb(
+            LabAsset::MaintenanceStatus::InProgress));
+
+    if (!updateTask.exec()) {
+        errorText = QStringLiteral("结束维修任务失败：%1")
+            .arg(updateTask.lastError().text());
+        database.rollback();
+        return false;
+    }
+    if (updateTask.numRowsAffected() != 1) {
+        errorText = QStringLiteral(
+            "任务状态已变化，请刷新后重试");
+        database.rollback();
+        return false;
+    }
+
+    if (!database.commit()) {
+        errorText = QStringLiteral("提交报废事务失败：%1")
+            .arg(database.lastError().text());
+        database.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool MaintenanceManager::createPendingRepairForDamagedReturn(
     int equipmentId,
     QString& errorText)

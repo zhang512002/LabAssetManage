@@ -71,6 +71,11 @@ MaintenancePage::MaintenancePage(QWidget* parent)
         this,
         &MaintenancePage::completeRecord);
     connect(
+        ui->btn_scrap,
+        &QPushButton::clicked,
+        this,
+        &MaintenancePage::scrapRecord);
+    connect(
         ui->btn_refresh,
         &QPushButton::clicked,
         this,
@@ -206,6 +211,11 @@ void MaintenancePage::updateActionButtons()
         selected
         && m_records.at(row).record.status
             == LabAsset::MaintenanceStatus::InProgress);
+    ui->btn_scrap->setEnabled(
+        selected
+        && m_records.at(row).record.type == QStringLiteral("repair")
+        && m_records.at(row).record.status
+            == LabAsset::MaintenanceStatus::InProgress);
 }
 
 void MaintenancePage::addRecord()
@@ -275,6 +285,40 @@ void MaintenancePage::completeRecord()
         QMessageBox::warning(
             this,
             QStringLiteral("完成处理失败"),
+            errorText);
+        return;
+    }
+
+    refreshData();
+    emit dataChanged();
+}
+
+void MaintenancePage::scrapRecord()
+{
+    const int row = ui->tableView->currentRow();
+    if (row < 0 || row >= m_records.size()) {
+        return;
+    }
+
+    const auto answer = QMessageBox::question(
+        this,
+        QStringLiteral("确认报废"),
+        QStringLiteral(
+            "维修失败后，该设备将被标记为“已报废”。\n"
+            "是否确认无法继续维修并执行报废？"),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+
+    QString errorText;
+    if (!MaintenanceManager::processRepairFailureAndScrap(
+            m_records.at(row).record.id,
+            errorText)) {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("报废失败"),
             errorText);
         return;
     }

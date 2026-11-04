@@ -22,6 +22,10 @@
 **/*.exp
 **/*.qtvscr
 
+# Generated module binaries; public headers remain tracked
+commonlibdll/*/bin/
+commonlibdll/*/lib/
+
 # Runtime databases
 *.db
 *.db-shm

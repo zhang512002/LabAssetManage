@@ -58,6 +58,10 @@ public:
         int recordId,
         QString& errorText);
 
+    static bool processRepairFailureAndScrap(
+        int recordId,
+        QString& errorText);
+
     static bool createPendingRepairForDamagedReturn(
         int equipmentId,
         QString& errorText);

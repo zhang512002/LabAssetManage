@@ -29,6 +29,7 @@ private slots:
     void editRecord();
     void startRecord();
     void completeRecord();
+    void scrapRecord();
     void exportData();
 
 private:

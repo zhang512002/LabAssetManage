@@ -19,6 +19,7 @@
      <item><widget class="QPushButton" name="btn_edit"><property name="text"><string>编辑记录</string></property></widget></item>
      <item><widget class="QPushButton" name="btn_start"><property name="text"><string>开始处理</string></property></widget></item>
      <item><widget class="QPushButton" name="btn_complete"><property name="text"><string>完成处理</string></property></widget></item>
+     <item><widget class="QPushButton" name="btn_scrap"><property name="text"><string>维修失败并报废</string></property></widget></item>
      <item><widget class="QPushButton" name="btn_refresh"><property name="text"><string>刷新</string></property></widget></item>
     </layout>
    </item>

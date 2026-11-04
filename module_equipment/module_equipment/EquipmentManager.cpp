@@ -450,17 +450,46 @@ bool EquipmentManager::processDelete(
         return false;
     }
 
-    if (status != LabAsset::EquipmentStatus::Available) {
+    if (status != LabAsset::EquipmentStatus::Available
+        && status != LabAsset::EquipmentStatus::Scrapped) {
         errorText =
             QStringLiteral("该设备当前为“%1”，存在关联流程，无法删除")
             .arg(LabAsset::statusToDisplay(status));
         return false;
     }
 
+    if (!database.transaction()) {
+        errorText = QStringLiteral("无法开启删除设备事务：%1")
+            .arg(database.lastError().text());
+        return false;
+    }
+
+    if (status == LabAsset::EquipmentStatus::Scrapped) {
+        QSqlQuery deleteBorrowRecords(database);
+        if (!deleteBorrowRecords.prepare(
+            "DELETE FROM borrow_record "
+            "WHERE equipment_id = :equipment_id")) {
+            errorText = QStringLiteral(
+                "准备清理设备借还历史失败：%1")
+                .arg(deleteBorrowRecords.lastError().text());
+            database.rollback();
+            return false;
+        }
+        deleteBorrowRecords.bindValue(":equipment_id", equipmentId);
+        if (!deleteBorrowRecords.exec()) {
+            errorText = QStringLiteral(
+                "清理设备借还历史失败：%1")
+                .arg(deleteBorrowRecords.lastError().text());
+            database.rollback();
+            return false;
+        }
+    }
+
     QSqlQuery query(database);
     if (!query.prepare("DELETE FROM equipment WHERE id = :id")) {
         errorText = QStringLiteral("准备删除设备失败：%1")
             .arg(query.lastError().text());
+        database.rollback();
         return false;
     }
     query.bindValue(":id", equipmentId);
@@ -473,11 +502,20 @@ bool EquipmentManager::processDelete(
         else {
             errorText = QStringLiteral("删除设备失败：%1").arg(detail);
         }
+        database.rollback();
         return false;
     }
 
     if (query.numRowsAffected() != 1) {
         errorText = QStringLiteral("未找到对应设备，记录可能已被删除");
+        database.rollback();
+        return false;
+    }
+
+    if (!database.commit()) {
+        errorText = QStringLiteral("提交删除设备事务失败：%1")
+            .arg(database.lastError().text());
+        database.rollback();
         return false;
     }
     return true;
