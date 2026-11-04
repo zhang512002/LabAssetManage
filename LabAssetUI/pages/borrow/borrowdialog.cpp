@@ -4,8 +4,8 @@
 
 #include "BorrowManager.h"
 
+#include <QListWidget>
 #include <QMessageBox>
-#include <QPushButton>
 
 BorrowDialog::BorrowDialog(QWidget* parent)
     : QDialog(parent)
@@ -32,8 +32,8 @@ BorrowDialog::BorrowDialog(QWidget* parent)
     const QList<BorrowManager::AvailableEquipment> equipments =
         BorrowManager::getAvailableEquipments(errorText);
     if (!errorText.isEmpty()) {
-        ui->buttonBox->button(QDialogButtonBox::Ok)
-            ->setEnabled(false);
+        ui->label_selected_count->setText(
+            QStringLiteral("读取设备失败"));
         QMessageBox::warning(
             this,
             QStringLiteral("读取设备失败"),
@@ -41,21 +41,30 @@ BorrowDialog::BorrowDialog(QWidget* parent)
         return;
     }
 
-    for (const BorrowManager::AvailableEquipment& equipment :
-         equipments) {
-        ui->combo_equipment->addItem(
+    for (const BorrowManager::AvailableEquipment& equipment : equipments) {
+        auto* item = new QListWidgetItem(
             equipment.assetNo
                 + QStringLiteral(" - ")
                 + equipment.name,
-            equipment.id);
+            ui->list_equipment);
+        item->setData(Qt::UserRole, equipment.id);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(Qt::Unchecked);
     }
 
-    if (ui->combo_equipment->count() == 0) {
-        ui->combo_equipment->addItem(
-            QStringLiteral("暂无可借设备"));
-        ui->buttonBox->button(QDialogButtonBox::Ok)
-            ->setEnabled(false);
-    }
+    connect(
+        ui->edit_equipment_search,
+        &QLineEdit::textChanged,
+        this,
+        &BorrowDialog::filterEquipment);
+    connect(
+        ui->list_equipment,
+        &QListWidget::itemChanged,
+        this,
+        [this](QListWidgetItem*) {
+            filterEquipment(ui->edit_equipment_search->text());
+        });
+    filterEquipment(ui->edit_equipment_search->text());
 }
 
 BorrowDialog::~BorrowDialog()
@@ -63,9 +72,41 @@ BorrowDialog::~BorrowDialog()
     delete ui;
 }
 
-int BorrowDialog::equipmentId() const
+void BorrowDialog::filterEquipment(const QString& text)
 {
-    return ui->combo_equipment->currentData().toInt();
+    const QString keyword = text.trimmed();
+    bool hasMatches = false;
+
+    for (int row = 0; row < ui->list_equipment->count(); ++row) {
+        QListWidgetItem* item = ui->list_equipment->item(row);
+        const bool matches =
+            item->text().contains(keyword, Qt::CaseInsensitive);
+        item->setHidden(!matches);
+        hasMatches = hasMatches || matches;
+    }
+
+    QString countText =
+        QStringLiteral("已选 %1 台").arg(equipmentIds().size());
+    if (ui->list_equipment->count() == 0) {
+        countText += QStringLiteral("，暂无可借设备");
+    }
+    else if (!hasMatches) {
+        countText += QStringLiteral("，没有匹配的设备");
+    }
+    ui->label_selected_count->setText(countText);
+}
+
+QList<int> BorrowDialog::equipmentIds() const
+{
+    QList<int> ids;
+    for (int row = 0; row < ui->list_equipment->count(); ++row) {
+        const QListWidgetItem* item =
+            ui->list_equipment->item(row);
+        if (item->checkState() == Qt::Checked) {
+            ids.append(item->data(Qt::UserRole).toInt());
+        }
+    }
+    return ids;
 }
 
 QString BorrowDialog::borrower() const
@@ -92,7 +133,7 @@ void BorrowDialog::accept()
 {
     QString errorText;
     if (!BorrowManager::processBorrow(
-            equipmentId(),
+            equipmentIds(),
             borrower(),
             borrowTime(),
             expectedReturnTime(),

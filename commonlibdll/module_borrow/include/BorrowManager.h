@@ -60,6 +60,14 @@ public:
         const QString& remark,
         QString& errorText);
 
+    static bool processBorrow(
+        const QList<int>& equipmentIds,
+        const QString& borrower,
+        const QDateTime& borrowTime,
+        const QDateTime& expectedReturnTime,
+        const QString& remark,
+        QString& errorText);
+
     static QList<BorrowRecord> getBorrowRecords(
         const QString& keyword,
         const std::optional<RecordStatus>& status,

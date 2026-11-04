@@ -3,6 +3,7 @@
 #include "BorrowManager.h"
 #include "enums.h"
 
+#include <QSet>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -44,6 +45,19 @@ namespace {
         return status == BorrowManager::RecordStatus::Borrowed
             ? QStringLiteral("borrowed")
             : QStringLiteral("returned");
+    }
+
+    QString equipmentLabel(const QSqlDatabase& database, int equipmentId)
+    {
+        QSqlQuery query(database);
+        query.prepare(
+            "SELECT asset_no, name FROM equipment WHERE id = :id");
+        query.bindValue(":id", equipmentId);
+        if (query.exec() && query.next()) {
+            return query.value(0).toString() + QStringLiteral(" - ")
+                + query.value(1).toString();
+        }
+        return QStringLiteral("设备 ID %1").arg(equipmentId);
     }
 
 } // namespace
@@ -107,12 +121,37 @@ bool BorrowManager::processBorrow(
     const QString& remark,
     QString& errorText)
 {
+    return processBorrow(
+        QList<int>{equipmentId},
+        borrower,
+        borrowTime,
+        expectedReturnTime,
+        remark,
+        errorText);
+}
+
+bool BorrowManager::processBorrow(
+    const QList<int>& equipmentIds,
+    const QString& borrower,
+    const QDateTime& borrowTime,
+    const QDateTime& expectedReturnTime,
+    const QString& remark,
+    QString& errorText)
+{
     errorText.clear();
     const QString normalizedBorrower = borrower.trimmed();
 
-    if (equipmentId <= 0) {
-        errorText = QStringLiteral("请选择一台可借设备");
+    if (equipmentIds.isEmpty()) {
+        errorText = QStringLiteral("请勾选至少一台可借设备");
         return false;
+    }
+    QSet<int> selectedIds;
+    for (int equipmentId : equipmentIds) {
+        if (equipmentId <= 0 || selectedIds.contains(equipmentId)) {
+            errorText = QStringLiteral("设备编号无效或重复");
+            return false;
+        }
+        selectedIds.insert(equipmentId);
     }
     if (normalizedBorrower.isEmpty()) {
         errorText = QStringLiteral("借用人不能为空");
@@ -159,22 +198,6 @@ bool BorrowManager::processBorrow(
         return false;
     }
 
-    updateEquipment.bindValue(":borrowed_status", borrowedStatus);
-    updateEquipment.bindValue(":equipment_id", equipmentId);
-    updateEquipment.bindValue(":available_status", availableStatus);
-
-    if (!updateEquipment.exec()) {
-        errorText = QStringLiteral("更新设备状态失败：%1")
-            .arg(updateEquipment.lastError().text());
-        database.rollback();
-        return false;
-    }
-    if (updateEquipment.numRowsAffected() != 1) {
-        errorText = QStringLiteral("设备已不可借，请刷新后重试");
-        database.rollback();
-        return false;
-    }
-
     QSqlQuery insertRecord(database);
     if (!insertRecord.prepare(
         "INSERT INTO borrow_record("
@@ -190,7 +213,8 @@ bool BorrowManager::processBorrow(
         return false;
     }
 
-    insertRecord.bindValue(":equipment_id", equipmentId);
+    updateEquipment.bindValue(":borrowed_status", borrowedStatus);
+    updateEquipment.bindValue(":available_status", availableStatus);
     insertRecord.bindValue(":borrower", normalizedBorrower);
     insertRecord.bindValue(
         ":borrow_time",
@@ -201,11 +225,33 @@ bool BorrowManager::processBorrow(
     insertRecord.bindValue(":status", borrowedStatus);
     insertRecord.bindValue(":remark", remark.trimmed());
 
-    if (!insertRecord.exec()) {
-        errorText = QStringLiteral("新增借阅记录失败：%1")
-            .arg(insertRecord.lastError().text());
-        database.rollback();
-        return false;
+    for (int equipmentId : equipmentIds) {
+        updateEquipment.bindValue(":equipment_id", equipmentId);
+        if (!updateEquipment.exec()
+            || updateEquipment.numRowsAffected() != 1) {
+            const QString reason =
+                updateEquipment.lastError().isValid()
+                ? updateEquipment.lastError().text()
+                : QStringLiteral("已不可借，请刷新后重试");
+            updateEquipment.finish();
+            errorText = equipmentLabel(database, equipmentId)
+                + QStringLiteral("：") + reason;
+            database.rollback();
+            return false;
+        }
+        updateEquipment.finish();
+
+        insertRecord.bindValue(":equipment_id", equipmentId);
+        if (!insertRecord.exec()) {
+            const QString reason = insertRecord.lastError().text();
+            insertRecord.finish();
+            errorText = equipmentLabel(database, equipmentId)
+                + QStringLiteral("：新增借阅记录失败，")
+                + reason;
+            database.rollback();
+            return false;
+        }
+        insertRecord.finish();
     }
 
     if (!database.commit()) {

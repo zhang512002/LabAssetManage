@@ -7,7 +7,9 @@
 #include "returndialog.h"
 #include "shared/UiHelpers.h"
 
+#include <QColor>
 #include <QDate>
+#include <QDateTime>
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QMessageBox>
@@ -126,10 +128,18 @@ void BorrowPage::refreshData()
         return;
     }
 
+    const QDateTime now = QDateTime::currentDateTime();
     ui->tableView->setRowCount(records.size());
     for (int row = 0; row < records.size(); ++row) {
         const BorrowManager::BorrowRecord& record =
             records.at(row);
+        const QDateTime expectedTime = QDateTime::fromString(
+            record.expectedReturnTime,
+            QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        const bool overdue =
+            record.status == BorrowManager::RecordStatus::Borrowed
+            && expectedTime.isValid()
+            && expectedTime < now;
         const QStringList values = {
             QString::number(record.id),
             record.assetNo,
@@ -139,7 +149,9 @@ void BorrowPage::refreshData()
             record.expectedReturnTime,
             record.actualReturnTime,
             record.status == BorrowManager::RecordStatus::Borrowed
-                ? QStringLiteral("未归还")
+                ? (overdue
+                    ? QStringLiteral("已超期")
+                    : QStringLiteral("未归还"))
                 : QStringLiteral("已归还"),
             record.remark
         };
@@ -149,6 +161,9 @@ void BorrowPage::refreshData()
                 new QTableWidgetItem(values.at(column));
             if (column != 2 && column != 8) {
                 item->setTextAlignment(Qt::AlignCenter);
+            }
+            if (column == 7 && overdue) {
+                item->setForeground(QColor(170, 35, 35));
             }
             ui->tableView->setItem(row, column, item);
         }

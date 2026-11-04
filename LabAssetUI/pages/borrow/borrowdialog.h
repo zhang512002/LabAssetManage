@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QDialog>
+#include <QList>
 #include <QString>
 
 namespace Ui {
@@ -16,7 +17,7 @@ public:
     explicit BorrowDialog(QWidget* parent = nullptr);
     ~BorrowDialog() override;
 
-    int equipmentId() const;
+    QList<int> equipmentIds() const;
     QString borrower() const;
     QDateTime borrowTime() const;
     QDateTime expectedReturnTime() const;
@@ -26,5 +27,7 @@ protected:
     void accept() override;
 
 private:
+    void filterEquipment(const QString& text);
+
     Ui::BorrowDialog* ui;
 };
