@@ -98,7 +98,7 @@ bool DatabaseManager::createTables()
         }
     }
 
-    // 旧数据库没有任务状态列；已有记录按历史完成记录迁移。
+    // 旧数据库没有任务状态列,已有记录按历史完成记录迁移。
     bool hasMaintenanceStatus = false;
     QSqlQuery tableInfo(m_db);
     if (!tableInfo.exec("PRAGMA table_info(maintenance_record)")) {
@@ -124,7 +124,7 @@ bool DatabaseManager::createTables()
         }
     }
 
-    // 兼容旧数据库中的状态值；这些迁移语句可重复执行。
+    // 兼容旧数据库中的状态值
     QSqlQuery migration(m_db);
     if (!migration.prepare(
             "UPDATE equipment SET status = :new_status "
@@ -161,7 +161,7 @@ bool DatabaseManager::createTables()
         }
     }
 
-    // 为旧数据库中处于维修流程但没有对应任务的设备补齐当前任务。
+    // 为旧数据库中处于维修流程但没有对应任务的设备补齐当前任务
     QSqlQuery activeTask(m_db);
     if (!activeTask.prepare(
             "INSERT INTO maintenance_record "

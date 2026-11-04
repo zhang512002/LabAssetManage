@@ -32,7 +32,7 @@ namespace LabAsset {
         return statuses;
     }
 
-    // 存数据库时的英文字符串 (核心契约)
+    // 存数据库时的英文字符串
     inline QString statusToDb(EquipmentStatus s) {
         switch (s) {
         case EquipmentStatus::Available:     return "available";
