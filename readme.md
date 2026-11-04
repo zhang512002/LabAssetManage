@@ -1,562 +1,250 @@
-# LabAssetManage 实验室设备资产管理系统
+# LabAssetManage · 实验室设备资产管理系统
 
-LabAssetManage 是一个基于 C++17、Qt 6 Widgets 和 SQLite 的多模块桌面项目。
+## 目录
 
-项目采用“表现层 + 业务层 + 数据访问层”的 DLL 分层架构：
+1. [项目简介](#1-项目简介)
+2. [系统功能](#2-系统功能)
+3. [模块架构与数据设计](#3-模块架构与数据设计)
+4. [团队分工与协作](#4-团队分工与协作)
+5. [仓库结构与模块产物](#5-仓库结构与模块产物)
+6. [构建与运行](#6-构建与运行)
+7. [独立运行与发布](#7-独立运行与发布)
+8. [使用示例与检查](#8-使用示例与检查)
 
-- 最终应用只负责界面和用户交互。
-- 每类业务分别封装在独立 DLL 中。
-- 所有业务 DLL 共享同一个数据库连接，但业务模块之间不直接依赖。
-- 公共头文件、导入库和运行 DLL 统一归档到 `commonlibdll`。
+## 1. 项目简介
 
-## 技术栈
+LabAssetManage 是一套面向实验室设备台账的 Windows 桌面应用，使用 C++17、Qt 6 Widgets 和 SQLite 开发。系统支持设备建档与批量导入、设备借还、维修保养、设备状态统计及 CSV 导出。借还窗口支持搜索可借设备并一次借出多台，借还列表会标出仍未归还的超期记录。
 
-| 项目 | 版本或配置 |
-| --- | --- |
-| IDE | Visual Studio 2019 |
-| 平台工具集 | v142 |
-| 语言标准 | C++17 |
-| Qt | 6.5.3 MSVC2019 64-bit |
-| Qt 模块 | Core、Gui、Widgets、Sql |
-| 数据库 | SQLite |
-| 目标平台 | x64 |
+设备档案是各项业务的入口。登记借出和归还后，可以在借还页查询历史记录，在设备页查看当前状态，在统计页查看各类设备的数量。遇到损坏归还时，可以在维保页接续处理，保留维修过程的记录。
 
-默认 Qt 路径：
+[项目仓库](https://github.com/zhang512002/LabAssetManage) · [Visual Studio 总解决方案](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetManage.sln)
 
-```text
-C:\Qt\6.5.3\msvc2019_64
+## 2. 系统功能
+
+### 2.1 设备管理
+
+- 维护资产编号、名称、型号、品牌、购置日期、价格、存放位置及责任人等信息，支持新增、编辑和删除。
+- 按资产编号或设备名称查询，并按设备状态筛选。保存时检查必填项和资产编号唯一性，删除时检查设备状态和关联借还记录。
+- 下载 CSV 导入模板，批量导入 `.xlsx` 或 `.csv` 设备数据。导入采用事务，任意一条写入失败时整批回滚。当前查询结果也可导出为 CSV。
+
+设备页面和编辑弹窗负责收集表单数据，`EquipmentManager` 负责校验、查重和写入。资产编号与设备名称是导入必填项，新建和导入的设备初始为“在用”。设备档案编辑保留设备状态，由后续借还和维保操作推动状态变化。 [设备管理实现](https://github.com/zhang512002/LabAssetManage/blob/main/module_equipment/module_equipment/EquipmentManager.cpp)
+
+### 2.2 借还登记
+
+- 在借出窗口的「资产编号/设备名称」输入框中搜索可借设备。勾选一台或多台后，窗口显示已选台数。切换关键词时保留已勾选的设备。 [借出窗口](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetUI/pages/borrow/borrowdialog.cpp)
+- 同一批设备共用借用人、借出时间、预计归还时间和备注，每台设备各生成一条记录，之后可以分别归还。提交时重新检查设备是否可借。设备状态与借还记录在同一事务中保存，其中一台写入失败时整批回滚。 [借还业务实现](https://github.com/zhang512002/LabAssetManage/blob/main/module_borrow/module_borrow/BorrowManager.cpp)
+- 支持按借用人或设备名称、借出日期范围及归还状态筛选记录，并导出当前查询结果为 CSV。超过预计归还时间且仍未归还的记录，在状态列显示红色「已超期」。这类记录仍归入「未归还」筛选，可继续登记归还。 [借还页面](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetUI/pages/borrow/borrowpage.cpp)
+- 归还时记录实际归还时间，设备恢复为「在用」或转为「待维修」。损坏归还提交后，主窗口通知维保页创建待维修任务。 [主窗口集成](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetUI/MainWindow.cpp)
+
+`BorrowPage` 管理列表和操作入口，`BorrowDialog` 与 `ReturnDialog` 收集借还信息。`BorrowManager` 保留单设备借出接口，并提供接收设备 ID 列表的重载。 [借还模块公开接口](https://github.com/zhang512002/LabAssetManage/blob/main/commonlibdll/module_borrow/include/BorrowManager.h)
+
+### 2.3 维保管理
+
+- 登记维修与保养任务，记录关联设备、日期、费用、说明及经办人，支持按设备查询台账、编辑记录和导出当前结果。
+- 待维修任务可以开始处理，进行中的维修或保养可以标记完成。任务完成时同步将设备恢复为“在用”，台账保留处理记录。
+- 接收损坏归还通知，建立对应的待维修任务，并避免为同一设备重复建立进行中的任务。
+
+`MaintenanceManager` 同时维护设备状态与任务状态。维修可以先登记为待维修，也可以直接登记为处理中。保养任务登记后进入处理中。开始与完成操作会在事务中同步对应的设备状态，已完成的任务仍可在台账查询。 [维保业务实现](https://github.com/zhang512002/LabAssetManage/blob/main/module_maintenance/module_maintenance/MaintenanceManager.cpp)
+
+### 2.4 统计与导出
+
+- 统计“在用、借出、待维修、维修中、保养中、已报废”六类设备状态，以卡片和明细表展示数量、占比及总计。
+- 分别导出设备总览、借还记录和维保记录。业务页导出当前筛选结果，统计页按对应报表的预设字段导出记录。
+- 统计查询由 `StatisticsManager` 完成，界面负责展示、选择保存位置和写入 CSV。
+
+设备总览包含资产编号、名称、型号、状态和位置。借还报表提供借用人、设备、借出时间、归还时间和状态。维保报表提供日期、设备、类型、任务状态、费用和描述。 [报表查询实现](https://github.com/zhang512002/LabAssetManage/blob/main/module_statistics/module_statistics/StatisticsManager.cpp)
+
+## 3. 模块架构与数据设计
+
+### 3.1 分层与依赖
+
+```mermaid
+flowchart TD
+    UI["LabAssetUI · 主窗口、页面和弹窗"]
+    E["module_equipment"]
+    B["module_borrow"]
+    M["module_maintenance"]
+    S["module_statistics"]
+    D["module_database · 连接、建表、迁移"]
+    DB[("本地 SQLite")]
+    UI --> E & B & M & S
+    UI --> D
+    E & B & M & S --> D
+    D --> DB
 ```
 
-## 系统功能
+| 层级                        | 职责                                                              |
+| ------------------------- | --------------------------------------------------------------- |
+| 界面层 `LabAssetUI`          | 收集输入、调用业务接口、显示结果。主窗口使用 `QListWidget` 和 `QStackedWidget` 管理四个页面。 |
+| 四个业务 DLL                  | 通过各自的 Manager 提供业务校验、查询、写入与状态流转。四个模块各自依赖数据库 DLL，跨页面事件由主窗口连接。    |
+| 数据库 DLL `module_database` | 初始化 SQLite、创建和迁移数据表，提供公共状态定义与数据结构。各模块共用名为 `lab_asset_main` 的连接。 |
 
-- 设备管理：查询、筛选、新增、编辑、删除、CSV/XLSX 批量导入和模板下载。
-- 借阅管理：可借设备搜索与多选、批量借出、超期提示、借还记录筛选、归还登记和 CSV 导出。
-- 维保管理：维修和保养记录、任务状态流转、设备状态联动和 CSV 导出。
-- 报废管理：维修失败后可将维修中的设备报废，报废设备可从设备页面永久删除。
-- 统计导出：设备状态统计，以及设备、借还、维保数据导出。
-- 跨模块联动：设备损坏归还后自动创建“待维修”任务。
+### 3.2 数据表与关联
 
-## 总体架构
+| 数据表                  | 主要字段                           | 关联                     |
+| -------------------- | ------------------------------ | ---------------------- |
+| `equipment`          | 资产编号、名称、位置、设备状态等               | `id` 为主键，`asset_no` 唯一 |
+| `borrow_record`      | 借用人、借出时间、预计归还时间、实际归还时间、借还状态和备注 | `equipment_id` 关联设备    |
+| `maintenance_record` | 维保日期、类型、任务状态、费用、说明和经办人         | `equipment_id` 关联设备    |
 
-```text
-┌──────────────────────────────────────────────┐
-│ LabAssetUI                                   │
-│ Qt Widgets Application                       │
-│                                              │
-│ MainWindow / pages / dialogs / table views   │
-└───────────────┬──────────────────────────────┘
-                │ 只调用 Manager 静态接口
-                ▼
-┌──────────────────────────────────────────────┐
-│ 业务 DLL 层                                  │
-│                                              │
-│ module_borrow                                │
-│ module_equipment                             │
-│ module_maintenance                           │
-│ module_statistics                            │
-└───────────────┬──────────────────────────────┘
-                │ 只依赖数据库 DLL
-                ▼
-┌──────────────────────────────────────────────┐
-│ module_database                              │
-│                                              │
-│ DatabaseManager                              │
-│ SQLite connection / table creation / migrate │
-└───────────────┬──────────────────────────────┘
-                ▼
-           SQLite 数据库
-```
+一台设备可对应多条借还记录和维保记录。首次启动时创建所需数据表，并开启 SQLite 外键约束。初始化还包含旧设备状态值的转换及维保任务状态字段的迁移。 [数据库初始化实现](https://github.com/zhang512002/LabAssetManage/blob/main/module_database/module_database/databasemanager.cpp)
 
-工程链接和构建依赖关系（不是目录树）：
+### 3.3 状态流转
 
-下表中的箭头 `使用方 -> 被依赖方` 表示使用方会链接对方的 `.lib`，
-运行时需要对方的 `.dll`。这里的名称是 Visual Studio 工程名，不是目录名。
+| 操作   | 设备状态变化       | 对应记录             |
+| ---- | ------------ | ---------------- |
+| 登记借出 | 在用 → 借出      | 每台设备新增一条未归还记录    |
+| 正常归还 | 借出 → 在用      | 填写实际归还时间并标记为已归还  |
+| 损坏归还 | 借出 → 待维修     | 完成归还登记，通知维保页创建任务 |
+| 开始维修 | 待维修 → 维修中    | 任务进入处理中          |
+| 登记保养 | 在用 → 保养中     | 新增处理中的保养任务       |
+| 完成维保 | 维修中或保养中 → 在用 | 任务标记为已完成         |
 
-| 使用方工程 | 被依赖或被链接的工程 |
-| --- | --- |
-| `module_borrow` | `module_database` |
-| `module_equipment` | `module_database` |
-| `module_maintenance` | `module_database` |
-| `module_statistics` | `module_database` |
-| `LabAssetUI` | `module_database`、`module_borrow`、`module_equipment`、`module_maintenance`、`module_statistics` |
+设备状态用于设备列表、借出判断和统计。维保任务另有待处理、处理中、已完成三种状态，用于表示单条任务的进度。状态代码与界面文案由公共头文件统一定义。 [状态定义](https://github.com/zhang512002/LabAssetManage/blob/main/module_database/module_database/enums.h)
 
-因此：
+### 3.4 跨页面更新
 
-- 4 个业务 DLL 只依赖数据库 DLL，不互相信赖。
-- `LabAssetUI` 是最终消费方，链接全部 5 个 DLL。
-- 总解决方案会先构建 `module_database`，再构建 4 个业务 DLL，最后构建 `LabAssetUI`。
-- 业务源码并不放在 `LabAssetUI/` 里面，它位于各自的 `module_*/module_*/` 工程目录。
+设备、借还或维保页面发出 `dataChanged()` 后，`MainWindow` 调用四个页面的刷新接口。损坏归还另有 `damagedEquipmentReturned(equipmentId)` 信号，由主窗口连接到维保页的任务创建接口。归还登记先提交自己的事务，维保页面随后根据设备 ID 创建任务。 [主窗口集成](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetUI/MainWindow.cpp)
 
-### 分层职责
+## 4. 团队分工与协作
 
-#### 表现层：LabAssetUI
+| 成员  | 模块                   | 主要工作                  |
+| --- | -------------------- | --------------------- |
+| 温麒霖 | `module_equipment`   | 设备档案、查询筛选、批量导入及模板     |
+| 张梦依 | `module_borrow`      | 可借设备搜索、批量借出、归还登记、记录查询 |
+| 张泽心 | `module_maintenance` | 维修保养台账、任务开始与完成、设备状态联动 |
+| 赵圆圆 | `module_statistics`  | 状态数量与占比统计、设备和业务报表导出   |
 
-负责：
+各成员按业务模块分工，集成工作围绕公共约定和模块接口展开。
 
-- 显示页面和弹窗。
-- 从控件收集用户输入。
-- 调用业务 Manager。
-- 显示错误信息。
-- 页面切换和跨页面信号协调。
-- 调用 SQLite 初始化数据库连接。
+1. **统一数据约定。** 四个模块使用同一套设备状态定义，通过公共数据库连接读写资产档案和关联记录。
+2. **约定模块接口。** 各模块通过公共头文件提供 Manager 接口，界面把表单输入传给对应模块，并展示接口返回的结果或错误。
+3. **集成界面与产物。** 各模块的头文件、导入库和运行 DLL 归集到 `commonlibdll`。总解决方案管理生成顺序，`LabAssetUI` 统一链接并装配四个页面。
+4. **接通跨页业务。** 借还页登记损坏归还后，维保页接续建立任务，设备页和统计页按共享数据刷新。各页面通过主窗口协调。
 
-表现层不直接执行 `SELECT`、`INSERT`、`UPDATE` 或事务，也不持有业务表访问逻辑。
+## 5. 仓库结构与模块产物
 
-#### 业务层：module_borrow / module_equipment / module_maintenance / module_statistics
-
-负责：
-
-- 业务校验。
-- SQL 查询。
-- 插入、更新和删除。
-- 数据库事务。
-- 业务状态转换。
-- 将错误信息通过 `QString& errorText` 返回给 UI。
-
-业务层不包含 `QWidget`、`QDialog`、`QMessageBox` 等界面类型，也不会弹出窗口。
-
-#### 数据访问层：module_database
-
-负责：
-
-- 注册命名数据库连接。
-- 创建和迁移表结构。
-- 向业务模块提供同一个 `QSqlDatabase`。
-- 提供通用枚举、共享模型和数据库基础能力。
-
-数据库连接名统一为：
-
-```text
-lab_asset_main
-```
-
-所有业务 DLL 都通过该连接名获取同一个 SQLite 连接。
-
-## 仓库目录
+### 5.1 源码目录
 
 ```text
 LabAssetManage/
-├── .gitignore
-├── LabAssetManage.sln
-├── readme.md
-│
-├── commonlibdll/                         # 公共开发接口与模块产物
-│   ├── module_database/
-│   │   ├── include/
-│   │   │   ├── common_global.h
-│   │   │   ├── csvexporter.h
-│   │   │   ├── databasemanager.h
-│   │   │   ├── enums.h
-│   │   │   └── maintenancerecord.h
-│   │   ├── lib/                          # 构建后生成 .lib
-│   │   └── bin/                          # 构建后生成 .dll
-│   │
-│   ├── module_borrow/
-│   │   ├── include/BorrowManager.h
-│   │   ├── lib/
-│   │   └── bin/
-│   │
-│   ├── module_equipment/
-│   │   ├── include/
-│   │   │   ├── EquipmentManager.h
-│   │   │   └── equipment.h
-│   │   ├── lib/
-│   │   └── bin/
-│   │
-│   ├── module_maintenance/
-│   │   ├── include/MaintenanceManager.h
-│   │   ├── lib/
-│   │   └── bin/
-│   │
-│   └── module_statistics/
-│       ├── include/StatisticsManager.h
-│       ├── lib/
-│       └── bin/
-│
-├── module_database/
-│   └── module_database/
-│       ├── module_database.sln
-│       ├── module_database.vcxproj
-│       ├── databasemanager.h / .cpp
-│       ├── enums.h
-│       ├── maintenancerecord.h
-│       └── csvexporter.h / .cpp
-│
-├── module_borrow/
-│   └── module_borrow/
-│       ├── module_borrow.sln
-│       ├── module_borrow.vcxproj
-│       └── BorrowManager.h / .cpp
-│
-├── module_equipment/
-│   └── module_equipment/
-│       ├── module_equipment.sln
-│       ├── module_equipment.vcxproj
-│       ├── EquipmentManager.h / .cpp
-│       ├── equipment.h
-│       ├── equipmentimporter.h / .cpp
-│       └── qzip.cpp / qzipreader_p.h
-│
-├── module_maintenance/
-│   └── module_maintenance/
-│       ├── module_maintenance.sln
-│       ├── module_maintenance.vcxproj
-│       └── MaintenanceManager.h / .cpp
-│
-├── module_statistics/
-│   └── module_statistics/
-│       ├── module_statistics.sln
-│       ├── module_statistics.vcxproj
-│       └── StatisticsManager.h / .cpp
-│
-└── LabAssetUI/
-    ├── CommonSettings.props
-    ├── LabAssetUI.vcxproj
-    ├── main.cpp
-    ├── MainWindow.h / .cpp / .ui
-    ├── MainWindow.qrc
-    │
-    ├── pages/
-    │   ├── borrow/
-    │   │   ├── borrowpage.h / .cpp / .ui
-    │   │   ├── borrowdialog.h / .cpp / .ui
-    │   │   └── returndialog.h / .cpp / .ui
-    │   ├── equipment/
-    │   │   ├── equipmentpage.h / .cpp / .ui
-    │   │   └── equipmentdialog.h / .cpp
-    │   ├── maintenance/
-    │   │   ├── maintenancepage.h / .cpp / .ui
-    │   │   └── maintenancedialog.h / .cpp
-    │   └── statistics/
-    │       └── statisticspage.h / .cpp / .ui
-    │
-    ├── shared/
-    │   └── UiHelpers.h / .cpp
-    │
-    └── x64/
-        └── Debug|Release/
+├── LabAssetManage.sln          # 总解决方案
+├── LabAssetUI/                 # 应用入口、主窗口和页面
+│   ├── pages/                  # equipment、borrow、maintenance、statistics
+│   ├── shared/                 # 界面共用的 CSV 导出工具
+│   └── CommonSettings.props    # 模块头文件与导入库路径
+├── module_database/           # SQLite 连接、建表、迁移和公共类型
+├── module_equipment/          # EquipmentManager 和导入逻辑
+├── module_borrow/             # BorrowManager 和借还事务
+├── module_maintenance/        # MaintenanceManager 和维保任务
+├── module_statistics/         # StatisticsManager 和报表查询
+└── commonlibdll/              # 各模块的公开头文件与构建产物
 ```
 
-`x64`、`Debug`、`Release`、`qt`、`.pch`、`.obj`、`.tlog`、`.pdb` 等构建缓存不会提交到 Git。
+各 `module_*` 目录保留对应模块的独立解决方案，内部的同名子目录包含该模块的 `.vcxproj` 和源码。四个页面及相应弹窗集中在 `LabAssetUI/pages/`，从界面调用的接口以 `commonlibdll` 中的公开头文件为准。
 
-## 业务接口
+### 5.2 模块交付目录
 
-### DatabaseManager
+| 路径                            | 用途                     |
+| ----------------------------- | ---------------------- |
+| `commonlibdll/<模块名>/include/` | 保存 Manager 接口、公共类型等头文件 |
+| `commonlibdll/<模块名>/lib/`     | 保存生成后的导入库，供依赖项目链接      |
+| `commonlibdll/<模块名>/bin/`     | 保存生成后的 DLL，供应用运行时加载    |
 
-```cpp
-class DatabaseManager {
-public:
-    static DatabaseManager& instance();
-    bool open(const QString& dbPath);
-    void close();
-    QSqlDatabase db() const;
-};
-```
+修改公开接口后，更新对应的交付头文件，并重新生成模块和依赖项目。`LabAssetUI` 使用属性表查找头文件与导入库。 [应用属性表](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetUI/CommonSettings.props)
 
-数据库文件使用 `QStandardPaths::AppDataLocation` 定位，Windows 下通常位于：
+## 6. 构建与运行
 
-```text
-%APPDATA%\LabAssetManage\LabAssetManage\lab_asset.db
-```
+### 6.1 开发环境
 
-数据库初始化时会创建：
+| 项目            | 工程配置                                                |
+| ------------- | --------------------------------------------------- |
+| 操作系统与平台       | Windows x64                                         |
+| Visual Studio | VS 2019 工程，使用 MSVC v142 和 Windows 10 SDK            |
+| C++           | C++17                                               |
+| Qt            | Qt 6.5.3，MSVC 2019 64 位套件（`msvc2019_64`）            |
+| Qt 组件         | Core、Gui、Widgets、Sql，通过 Qt VS Tools 和 Qt/MSBuild 集成 |
 
-- `equipment`
-- `borrow_record`
-- `maintenance_record`
+### 6.2 生成解决方案
 
-同时包含旧数据库字段和状态值迁移逻辑。
-
-### BorrowManager
-
-主要接口：
-
-```cpp
-getAvailableEquipments()
-processBorrow()
-getBorrowRecords()
-getReturnInfo()
-processReturn()
-```
-
-`processBorrow()` 同时保留单设备参数和多设备 ID 列表两个重载。多设备借出在
-同一个事务中逐台检查可借状态并写入借阅记录，任意一台失败时整批回滚。
-
-借出事务同时完成：
-
-1. 检查设备仍为“在用”。
-2. 将设备更新为“借出”。
-3. 插入借阅记录。
-
-归还事务同时完成：
-
-1. 更新借阅记录和实际归还时间。
-2. 正常归还时恢复“在用”。
-3. 标记损坏时改为“待维修”。
-
-### EquipmentManager
-
-主要接口：
-
-```cpp
-getEquipments()
-checkEquipmentForSave()
-processAdd()
-processUpdate()
-processDelete()
-processImport()
-readImportFile()
-writeImportTemplate()
-```
-
-设备导入支持 `.xlsx` 和 `.csv`。批量导入使用数据库事务，任意一条失败时整体回滚。
-
-设备只有在“在用”状态且没有关联借还记录时才能删除。
-
-### MaintenanceManager
-
-主要接口：
-
-```cpp
-getRecords()
-getLedger()
-getEquipmentOptions()
-getEquipmentStatusCounts()
-processAdd()
-processStart()
-processComplete()
-processUpdate()
-processDelete()
-createPendingRepairForDamagedReturn()
-```
-
-维修流程：
-
-```text
-待维修 -> 处理中 -> 已完成
-```
-
-保养登记会直接进入处理中：
-
-```text
-保养中 -> 已完成
-```
-
-任务完成时设备恢复为“在用”。
-
-维修处理中还可以选择“维修失败并报废”：
-
-```text
-设备状态：维修中 -> 已报废
-任务状态：处理中 -> 已完成
-```
-
-报废操作不增加新的数据库表或字段，而是复用现有状态和说明字段。报废后，
-设备管理页面允许永久删除该设备；删除会同时清理关联借还记录，并依靠现有
-外键级联删除维保记录。
-
-### StatisticsManager
-
-主要接口：
-
-```cpp
-getEquipmentStatusCounts()
-getExportData()
-```
-
-支持三类数据导出：
-
-- 设备总览
-- 借还记录
-- 维保记录
-
-统计 Manager 返回二维表格数据，由 UI 负责选择文件并写入 CSV，避免 UI 直接执行统计 SQL。
-
-## UI 架构
-
-主窗体使用：
-
-```text
-QListWidget + QStackedWidget
-```
-
-导航索引与页面顺序：
-
-| 索引 | 页面 |
-| --- | --- |
-| 0 | 设备管理 |
-| 1 | 借阅管理 |
-| 2 | 维保管理 |
-| 3 | 统计导出 |
-
-页面通过信号与主窗体协调：
-
-```text
-EquipmentPage::dataChanged
-BorrowPage::dataChanged
-MaintenancePage::dataChanged
-        |
-        v
-MainWindow::refreshAllPages()
-```
-
-损坏归还联动：
-
-```text
-BorrowPage
-  damagedEquipmentReturned(equipmentId)
-        |
-        v
-MaintenancePage
-  createPendingRepairForDamagedReturn(equipmentId)
-```
-
-## DLL 导出机制
-
-业务层使用条件导出宏，例如：
-
-```cpp
-#if defined(BORROW_LIBRARY)
-#define BORROW_MANAGER_EXPORT __declspec(dllexport)
-#else
-#define BORROW_MANAGER_EXPORT __declspec(dllimport)
-#endif
-```
-
-含义：
-
-- 编译业务 DLL 时定义对应的 `*_LIBRARY` 宏，生成导出符号。
-- UI 编译时不定义该宏，因此按 `dllimport` 消费 DLL。
-- UI 通过 `.lib` 导入库链接，运行时再加载对应 `.dll`。
-
-各业务工程必须保持导出宏与公开头文件中的宏一致。
-
-## 构建说明
-
-### 前置条件
-
-- Visual Studio 2019，安装“使用 C++ 的桌面开发”。
-- Qt VS Tools。
-- Qt 6.5.3 MSVC2019 64-bit。
-- Windows 10 SDK。
-
-### 构建步骤
-
-1. 打开根目录的 `LabAssetManage.sln`。
-2. 选择 `Debug | x64` 或 `Release | x64`。
-3. 生成解决方案。
-
-解决方案已经配置以下依赖：
-
-```text
-module_database
-    |
-    +-- module_borrow
-    +-- module_equipment
-    +-- module_maintenance
-    +-- module_statistics
-             |
-             v
-        LabAssetUI
-```
-
-UI 构建完成后，会自动把 5 个模块 DLL 复制到 UI 输出目录。
-
-### Debug/Release 产物命名
-
-Debug 产物追加 `d` 后缀，Release 保持无后缀：
-
-| Debug | Release |
-| --- | --- |
-| `module_databased.dll/.lib` | `module_database.dll/.lib` |
-| `module_borrowd.dll/.lib` | `module_borrow.dll/.lib` |
-| `module_equipmentd.dll/.lib` | `module_equipment.dll/.lib` |
-| `module_maintenanced.dll/.lib` | `module_maintenance.dll/.lib` |
-| `module_statisticsd.dll/.lib` | `module_statistics.dll/.lib` |
-
-因此 Debug 和 Release 产物可以同时保存在公共库中，不会互相覆盖。
-UI 会按照当前配置链接并复制对应名称的 DLL。
-
-## 输出位置
-
-Debug UI：
-
-```text
-LabAssetUI\x64\Debug\LabAssetUI.exe
-```
-
-Release UI：
-
-```text
-LabAssetUI\x64\Release\LabAssetUI.exe
-```
-
-公共模块产物：
-
-```text
-commonlibdll\<module>\bin\*.dll
-commonlibdll\<module>\lib\*.lib
-commonlibdll\<module>\include\*.h
-```
-
-## 直接运行与 Qt 部署
-
-Visual Studio 能直接运行，是因为 Qt VS Tools 会自动把 Qt 的 `bin` 和插件目录加入调试环境。双击 EXE 时不会获得这套环境。
-
-Debug 部署：
+在 PowerShell 中获取源码：
 
 ```powershell
-& "C:\Qt\6.5.3\msvc2019_64\bin\windeployqt.exe" `
-  --debug `
-  --no-translations `
-  --no-compiler-runtime `
-  ".\LabAssetUI\x64\Debug\LabAssetUI.exe"
+git clone https://github.com/zhang512002/LabAssetManage.git
+Set-Location LabAssetManage
 ```
 
-Release 部署：
+1. 打开根目录的 [LabAssetManage.sln](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetManage.sln)。
+2. 在 Qt VS Tools 中注册本机的 Qt 安装。主程序项目配置的套件名称为 `Qt 6.5.3 MSVC2019 64-bit`。如果本机注册名称不同，在项目属性里选择对应套件，并检查各 DLL 项目也使用同一套件。使用 VS 2022 时可安装工程指定的 v142 工具集。
+3. 选择 **Debug | x64** 或 **Release | x64**，生成整个解决方案。项目依赖会先生成 `module_database`，再生成四个业务 DLL，最后生成 `LabAssetUI`。如果本机未启用 C++17，在 C/C++ 项目属性中将语言标准设为 C++17。
+4. 将 `LabAssetUI` 设为启动项目，按 **F5** 运行。
+
+主程序输出到 `LabAssetUI/x64/Debug/LabAssetUI.exe` 或 `LabAssetUI/x64/Release/LabAssetUI.exe`。应用项目在生成后将五个模块 DLL 复制到对应输出目录。两种配置使用同一套输出目录结构，文件名可以区分。Debug 模块产物带 `d` 后缀，例如 `module_borrowd.dll` 和 `module_borrowd.lib`，Release 则生成 `module_borrow.dll` 和 `module_borrow.lib`。主程序通过属性表链接对应配置的导入库。 [应用属性表](https://github.com/zhang512002/LabAssetManage/blob/main/LabAssetUI/CommonSettings.props)
+
+### 6.3 构建问题定位
+
+| 现象                            | 检查位置                                         |
+| ----------------------------- | -------------------------------------------- |
+| 找不到 `qt.targets` 或 `Qt.props` | 检查 Visual Studio 中的 Qt VS Tools 和项目选择的 Qt 套件 |
+| 找不到 `module_*.lib`            | 确认从根解决方案生成，并检查各模块的 `commonlibdll/<模块名>/lib/` |
+| 启动时缺少 `module_*.dll`          | 检查各模块的 `bin/` 是否生成 DLL，以及主程序输出目录是否完成复制       |
+| 无法加载 `QSQLITE`                | 检查当前 Qt 环境或发布目录下的 SQLite 驱动，并核对架构及构建配置       |
+
+## 7. 独立运行与发布
+
+### 7.1 准备发布目录
+
+在另一台电脑运行时，先生成 **Release | x64**，再将 Release 输出目录中的主程序与五个模块 DLL 一起复制到发布目录。对发布目录中的 EXE 运行与构建所用套件相同的 `windeployqt`，收集 Qt 运行库和插件。
 
 ```powershell
-& "C:\Qt\6.5.3\msvc2019_64\bin\windeployqt.exe" `
-  --release `
-  --no-translations `
-  --no-compiler-runtime `
-  ".\LabAssetUI\x64\Release\LabAssetUI.exe"
+$qtInstall = 'C:\Qt\6.5.3\msvc2019_64' # 按本机安装路径调整
+$releaseDir = '.\LabAssetUI\x64\Release'
+$publishDir = '.\publish'
+
+New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $releaseDir 'LabAssetUI.exe') -Destination $publishDir
+Copy-Item -Path (Join-Path $releaseDir 'module_*.dll') -Destination $publishDir
+& "$qtInstall\bin\windeployqt.exe" --release (Join-Path $publishDir 'LabAssetUI.exe')
 ```
 
-必须确保输出目录包含：
+在仓库根目录执行示例。打包后按下表检查文件及目标环境。
 
-```text
-Qt6Core*.dll
-Qt6Gui*.dll
-Qt6Widgets*.dll
-Qt6Sql*.dll
-platforms\qwindows*.dll
-sqldrivers\qsqlite*.dll
-module_*.dll
-```
+| 项目     | 文件或位置                                                                                                             |
+| ------ | ----------------------------------------------------------------------------------------------------------------- |
+| 应用     | `LabAssetUI.exe`                                                                                                  |
+| 自有模块   | `module_database.dll`、`module_equipment.dll`、`module_borrow.dll`、`module_maintenance.dll`、`module_statistics.dll` |
+| Qt 运行库 | Qt Core、Gui、Widgets 和 Sql 运行库                                                                                     |
+| Qt 插件  | `platforms/qwindows.dll` 和 `sqldrivers/qsqlite.dll`                                                               |
+| 系统运行时  | 目标电脑所需的 x64 MSVC 运行时                                                                                              |
 
-## 当前已知事项
+如果部署工具未复制 Qt Sql 或 SQLite 驱动，从同一套 Qt 的 `bin` 和 `plugins/sqldrivers` 补齐。发布前可在目标电脑启动程序，确认数据库初始化成功并能打开四个页面。 [Qt 6.5 Windows 部署文档](https://doc.qt.io/qt-6.5/windows-deployment.html)
 
-- 5 个 DLL 工程存在 `OutDir` 与 `Link.OutputFile` 不一致的 MSB8012 警告。当前构建能够成功，但后续可进一步统一 `bin` 和 `lib` 的输出规则。
-- 部分模块的 `OutDir` 没有以反斜杠结尾，会产生 MSB8004 警告，不影响当前构建。
-- Git 默认不提交 Qt 运行库和 Visual Studio 构建缓存。
-- 项目当前使用固定命名连接 `lab_asset_main`；所有模块必须继续使用该连接名。
+### 7.2 数据位置与备份
 
-## 扩展新模块
+首次启动时，程序会在当前用户的应用数据目录创建数据库。Windows 下通常为 `%APPDATA%\LabAssetManage\LabAssetManage\lab_asset.db`。迁移或备份业务数据时，关闭程序后复制实际使用的数据库文件。
 
-新增业务模块时建议遵循：
+CSV 报表适合查看和交换选定字段，完整迁移设备档案及关联记录时使用数据库文件。
 
-1. 新建独立 Qt DLL 工程。
-2. 只依赖 `module_database`。
-3. 暴露静态 Manager 接口，不暴露 UI 类型。
-4. 错误通过 `QString& errorText` 返回。
-5. 更新业务 DLL、LIB 和公共头文件到 `commonlibdll`。
-6. 在根解决方案中添加 UI -> 新模块的依赖。
-7. 在 UI 的 `CommonSettings.props` 中添加 include、lib 和依赖项。
-8. 在 `LabAssetUI.vcxproj` 的构建后复制目标中添加新 DLL。
+## 8. 使用示例与检查
 
-## 仓库
+### 8.1 一次完整的登记流程
 
-```text
-https://github.com/zhang512002/LabAssetManage
-```
+1. 在设备管理页新增一台设备，或下载模板，填写资产编号、设备名称等信息后批量导入。
+2. 在借还页打开「登记借出」，按资产编号或设备名称搜索并勾选设备，填写借用人和预计归还时间。保存后，已选设备变为「借出」，借还页为每台设备显示一条未归还记录。
+3. 选中记录登记归还。正常归还后设备恢复为“在用”。若选择损坏归还，设备进入“待维修”，并生成对应的待维修任务。
+4. 在维保页开始处理该任务，处理结束后标记完成。回到统计页查看设备状态变化，并按需导出报表。
+
+### 8.2 运行检查项
+
+| 检查项     | 预期表现                                |
+| ------- | ----------------------------------- |
+| 首次启动    | 创建用户数据库，可以切换四个页面                    |
+| 重复编号    | 新增或导入重复资产编号时提示错误                    |
+| 搜索与多选   | 按资产编号或名称筛选，换关键词后已勾选的设备仍计入已选台数       |
+| 批量借出    | 一次提交为每台设备生成一条记录，其中一台不可借或写入失败时整批回滚   |
+| 超期与归还   | 未归还记录超过预计归还时间后显示红色「已超期」，同一批设备可以分别归还 |
+| 损坏归还与维保 | 归还后出现待维修任务，开始与完成操作同步设备状态            |
+| CSV 导出  | 业务页导出当前筛选结果，统计页按报表字段导出              |
+| 发布目录启动  | 在目标电脑打开 EXE，可以初始化 SQLite 并进入主窗口     |
+
+上表列出建议验证的行为，实际验收结果以运行记录为准。
