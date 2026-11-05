@@ -30,9 +30,6 @@
     <ClInclude Include="enums.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="maintenancerecord.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -189,7 +189,6 @@
     <ClInclude Include="databasemanager.h" />
     <ClInclude Include="enums.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="maintenancerecord.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
